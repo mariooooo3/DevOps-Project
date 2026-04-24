@@ -161,9 +161,9 @@ Push to main
 
 Runner with **shell** executor, tag `shell`, registered on gitlab2.
 
-![GitLab Runner - Online and Active](../docs/runner.png)
+![GitLab Runner - Online and Active](docs/runner.png)
 
-![Pipeline #8 - Passed](../docs/pipeline.png)
+![Pipeline #8 - Passed](docs/pipeline.png)
 
 ---
 
