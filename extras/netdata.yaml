@@ -1,0 +1,112 @@
+---
+# ============================================================
+# netdata.yaml - Extra
+# Instaleaza Netdata + Nginx reverse proxy cu Basic Auth
+# Folosire: ansible-playbook -i inventory.ini netdata.yaml
+# ============================================================
+
+- name: Install Netdata and Nginx reverse proxy
+  hosts: app
+  become: yes
+
+  vars:
+    netdata_user: "admin"
+    netdata_password: "fiipractic"
+    domain: "netdata.fiipractic.lan"
+
+  tasks:
+
+    # ---- Instalare Netdata ----
+    - name: Download Netdata install script
+      ansible.builtin.get_url:
+        url: https://my-netdata.io/kickstart.sh
+        dest: /tmp/netdata-install.sh
+        mode: '0755'
+
+    - name: Install Netdata
+      ansible.builtin.command: bash /tmp/netdata-install.sh --non-interactive --stable-channel
+      args:
+        creates: /usr/sbin/netdata
+
+    - name: Start and enable Netdata
+      ansible.builtin.service:
+        name: netdata
+        state: started
+        enabled: yes
+
+    # ---- Instalare Nginx ----
+    - name: Install Nginx and httpd-tools
+      ansible.builtin.package:
+        name:
+          - nginx
+          - httpd-tools
+        state: present
+
+    # ---- Basic Auth ----
+    - name: Create Basic Auth password file
+      ansible.builtin.command: >
+        htpasswd -bc /etc/nginx/.htpasswd {{ netdata_user }} {{ netdata_password }}
+      args:
+        creates: /etc/nginx/.htpasswd
+
+    # ---- SSL Certificate ----
+    - name: Create SSL directory for nginx
+      ansible.builtin.file:
+        path: /etc/nginx/ssl
+        state: directory
+        mode: '0755'
+
+    - name: Copy SSL certificate
+      ansible.builtin.copy:
+        src: /etc/gitlab/ssl/gitlab.fiipractic.lan.crt
+        dest: /etc/nginx/ssl/app.fiipractic.lan.crt
+        remote_src: yes
+
+    - name: Copy SSL key
+      ansible.builtin.copy:
+        src: /etc/gitlab/ssl/gitlab.fiipractic.lan.key
+        dest: /etc/nginx/ssl/app.fiipractic.lan.key
+        remote_src: yes
+        mode: '0600'
+
+    # ---- Nginx Config ----
+    - name: Configure Nginx reverse proxy for Netdata
+      ansible.builtin.copy:
+        dest: /etc/nginx/conf.d/netdata.conf
+        content: |
+          server {
+              listen 80;
+              server_name {{ domain }};
+              return 301 https://$host$request_uri;
+          }
+
+          server {
+              listen 443 ssl;
+              server_name {{ domain }};
+
+              ssl_certificate     /etc/nginx/ssl/app.fiipractic.lan.crt;
+              ssl_certificate_key /etc/nginx/ssl/app.fiipractic.lan.key;
+
+              auth_basic           "Netdata - Acces restrictionat";
+              auth_basic_user_file /etc/nginx/.htpasswd;
+
+              location / {
+                  proxy_pass http://127.0.0.1:19999;
+                  proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              }
+          }
+      notify: Restart nginx
+
+    - name: Start and enable Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted

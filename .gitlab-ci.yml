@@ -1,0 +1,41 @@
+include:
+  - template: 'Workflows/Branch-Pipelines.gitlab-ci.yml'
+
+stages:
+  - build
+  - deploy
+
+# ---- BUILD & PUSH ----
+build-image:
+  stage: build
+  before_script:
+    - echo "Logging in to GitLab Registry..."
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - echo "Building Docker image..."
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - echo "Pushing image to registry..."
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    - echo "Build and push complete: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+  after_script:
+    - docker logout $CI_REGISTRY || true
+  tags:
+    - shell
+
+# ---- DEPLOY via Ansible ----
+deploy-app:
+  stage: deploy
+  variables:
+    TOKEN_USERNAME: $TOKEN_USERNAME
+    TOKEN_KEY: $TOKEN_KEY
+  before_script:
+    - echo "Starting deploy to app.fiipractic.lan..."
+    - ansible --version
+  script:
+    - ansible-playbook -i inventory.ini deploy.yaml
+  after_script:
+    - echo "Deploy finished."
+  tags:
+    - shell
+  only:
+    - main

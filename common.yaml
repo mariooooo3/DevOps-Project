@@ -1,0 +1,124 @@
+---
+# ============================================================
+# common.yaml - Rulat de pe gitlab2 catre ambele VM-uri
+# Folosire: ansible-playbook -i inventory.ini common.yaml
+# ============================================================
+
+- name: Common configuration for all VMs
+  hosts: all
+  become: yes
+
+  tasks:
+
+    # ---- Timezone ----
+    - name: Set timezone to Europe/Bucharest
+      community.general.timezone:
+        name: Europe/Bucharest
+
+    # ---- SELinux ----
+    - name: Disable SELinux permanently
+      ansible.builtin.lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: 'SELINUX=disabled'
+
+    - name: Set SELinux to permissive at runtime
+      ansible.builtin.command: setenforce 0
+      ignore_errors: yes
+
+    # ---- Firewalld ----
+    - name: Stop and disable firewalld
+      ansible.builtin.service:
+        name: firewalld
+        state: stopped
+        enabled: no
+      ignore_errors: yes
+
+    # ---- SSH hardening ----
+    - name: Set PermitRootLogin to prohibit-password
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin prohibit-password'
+      notify: Restart sshd
+
+    # ---- SSH Banner (Extra) ----
+    - name: Create SSH banner file
+      ansible.builtin.copy:
+        dest: /etc/ssh/banner
+        content: |
+          ############################################################
+          #  This server is restricted to authorized users only.     #
+          #  All activities on this system are logged.               #
+          #  Unauthorized access will be fully investigated and      #
+          #  reported to the appropriate law enforcement agencies.   #
+          ############################################################
+        mode: '0644'
+
+    - name: Enable SSH banner in sshd_config
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?Banner'
+        line: 'Banner /etc/ssh/banner'
+      notify: Restart sshd
+
+    # ---- Docker ----
+    - name: Add Docker repository
+      ansible.builtin.yum_repository:
+        name: docker-ce-stable
+        description: Docker CE Stable
+        baseurl: https://download.docker.com/linux/centos/$releasever/$basearch/stable
+        gpgcheck: yes
+        gpgkey: https://download.docker.com/linux/centos/gpg
+        enabled: yes
+
+    - name: Install Docker packages
+      ansible.builtin.package:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+
+    - name: Start and enable Docker
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: yes
+
+    # ---- Root CA ----
+    - name: Copy Root CA certificate to trusted store
+      ansible.builtin.copy:
+        src: certs/myCA.crt
+        dest: /etc/pki/ca-trust/source/anchors/myCA.crt
+        mode: '0644'
+      notify: Update CA trust
+
+  handlers:
+    - name: Restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+
+    - name: Update CA trust
+      ansible.builtin.command: update-ca-trust
+
+# ============================================================
+# Sarcini specifice doar pentru gitlab2
+# ============================================================
+- name: GitLab-specific setup
+  hosts: gitlab
+  become: yes
+
+  tasks:
+
+    - name: Install GitLab Runner
+      ansible.builtin.package:
+        name: gitlab-runner
+        state: present
+
+    - name: Install GitLab CE
+      ansible.builtin.package:
+        name: gitlab-ce
+        state: present

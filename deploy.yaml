@@ -1,0 +1,69 @@
+---
+# ============================================================
+# deploy.yaml - Lansare container springboot pe app2
+# Folosire: ansible-playbook -i inventory.ini deploy.yaml
+# ============================================================
+
+- name: Deploy springboot container on app VM
+  hosts: app
+  become: yes
+
+  vars:
+    registry_url: "{{ lookup('env', 'CI_REGISTRY') }}"
+    registry_user: "{{ lookup('env', 'TOKEN_USERNAME') }}"
+    registry_pass: "{{ lookup('env', 'TOKEN_KEY') }}"
+    image: "{{ lookup('env', 'CI_REGISTRY_IMAGE') }}"
+    tag: "{{ lookup('env', 'CI_COMMIT_SHORT_SHA') }}"
+    container_name: "springboot"
+    app_port: "8080"
+
+  tasks:
+
+    - name: Log into GitLab Container Registry
+      ansible.builtin.command: >
+        docker login {{ registry_url }}
+        -u {{ registry_user }}
+        -p {{ registry_pass }}
+      no_log: true
+
+    - name: Get image ID of existing container (before update)
+      ansible.builtin.command: docker inspect --format="{{ '{{' }}.Image{{ '}}' }}" {{ container_name }}
+      register: old_image_id
+      ignore_errors: yes
+
+    - name: Pull Docker image
+      ansible.builtin.command: >
+        docker pull {{ image }}:{{ tag }}
+
+    - name: Stop existing container (if running)
+      ansible.builtin.command: docker stop {{ container_name }}
+      ignore_errors: yes
+
+    - name: Remove existing container (if exists)
+      ansible.builtin.command: docker rm {{ container_name }}
+      ignore_errors: yes
+
+    - name: Remove old Docker image (if existed)
+      ansible.builtin.command: docker rmi {{ old_image_id.stdout }}
+      when: old_image_id.rc == 0 and old_image_id.stdout != ""
+      ignore_errors: yes
+
+    - name: Deploy new Docker container
+      ansible.builtin.command: >
+        docker run -d
+        --name {{ container_name }}
+        --restart always
+        -p {{ app_port }}:{{ app_port }}
+        {{ image }}:{{ tag }}
+
+    - name: Logout from GitLab Container Registry
+      ansible.builtin.command: docker logout {{ registry_url }}
+      ignore_errors: yes
+
+    - name: Verify container is running
+      ansible.builtin.command: docker ps --filter name={{ container_name }}
+      register: container_status
+
+    - name: Show container status
+      ansible.builtin.debug:
+        var: container_status.stdout_lines

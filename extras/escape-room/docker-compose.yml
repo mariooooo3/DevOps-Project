@@ -1,0 +1,38 @@
+version: '3.8'
+services:
+  room1:
+    build: room1
+    container_name: room1
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+  room2:
+    build: room2
+    container_name: room2
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+  room3:
+    build: room3
+    container_name: room3
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+  room4:
+    build: room4
+    container_name: room4
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    networks:
+      - default
+      - secret-net
+  vault:
+    build: vault
+    container_name: vault
+    restart: unless-stopped
+    networks:
+      - secret-net
+networks:
+  secret-net:
+    driver: bridge

@@ -1,0 +1,25 @@
+# Certificate si chei private - nu se comit niciodata
+certs/*.crt
+certs/*.key
+certs/*.pem
+certs/*.p12
+
+# Build artifacts Spring Boot
+build/
+.gradle/
+out/
+*.jar
+*.war
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vagrant
+.vagrant/
